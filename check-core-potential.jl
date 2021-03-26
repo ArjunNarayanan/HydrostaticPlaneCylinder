@@ -23,25 +23,6 @@ function solver_core_strain_energy(
     return HS.core_strain_energy(solver, V0c)
 end
 
-function displacement_coefficients(
-    inner_radius,
-    outer_radius,
-    lambda,
-    mu,
-    theta0,
-)
-    K = bulk_modulus(lambda, mu)
-    C1 = (lambda - 2mu) / (lambda + 2mu)
-    C2 = K / (2 * (lambda + 2mu))
-    g = inner_radius / outer_radius
-
-    A1c = C1 * theta0 / 6 * (g^2 - 1)
-    A1s = C1 * theta0 / 6 * (g^2 + 2 / C1)
-    A2s = -C2 * theta0 * inner_radius^2
-    B = theta0 / 3 * (1 - g^2)
-    return A1c, A1s, A2s, B
-end
-
 function direct_core_strain_energy(
     inner_radius,
     outer_radius,
@@ -50,7 +31,7 @@ function direct_core_strain_energy(
     theta0,
     V0c,
 )
-    A1c, A1s, A2s, B = displacement_coefficients(
+    A1c, A1s, A2s, B = HS.displacement_coefficients(
         inner_radius,
         outer_radius,
         lambda,
@@ -99,7 +80,7 @@ function direct_core_compression_work(
     V0c,
 )
 
-    A1c, A1s, A2s, B = displacement_coefficients(
+    A1c, A1s, A2s, B = HS.displacement_coefficients(
         inner_radius,
         outer_radius,
         lambda,
@@ -148,7 +129,7 @@ function direct_core_potential(
     theta0,
     V0c,
 )
-    A1c, A1s, A2s, B = displacement_coefficients(
+    A1c, A1s, A2s, B = HS.displacement_coefficients(
         inner_radius,
         outer_radius,
         lambda,
@@ -156,14 +137,67 @@ function direct_core_potential(
         theta0,
     )
 
-    return V0c * (
-        -2 * (lambda + mu) * A1c^2 - 2 * (lambda + mu) * A1c * B -
-        (lambda - 2mu) / 2 * B^2 - 2 * (lambda + mu) * A1c - lambda * B
+    return -V0c * (
+        2 * (lambda + mu) * A1c^2 +
+        2 * (lambda + mu) * A1c * B +
+        (lambda - 2mu) / 2 * B^2 +
+        2 * (lambda + mu) * A1c +
+        lambda * B
     )
 end
 
-function maximum_error(u, v)
-    return maximum(abs.(u - v))
+function expanded_core_potential(
+    inner_radius,
+    outer_radius,
+    lambda,
+    mu,
+    theta0,
+    V0c,
+)
+    K = bulk_modulus(lambda, mu)
+    g = inner_radius / outer_radius
+    C1 = (lambda - 2mu) / (lambda + 2mu)
+
+    t1 = -(lambda / 3 - (lambda + mu) * C1 / 3) * theta0
+    t2 = -(-lambda / 3 + (lambda + mu) * C1 / 3) * theta0 * g^2
+    t3 =
+        -(
+            (lambda - 2mu) / 18 - (lambda + mu) * C1 / 9 +
+            (lambda + mu) * C1^2 / 18
+        ) * theta0^2
+    t4 =
+        -(
+            -(lambda - 2mu) / 9 + 2 * (lambda + mu) * C1 / 9 -
+            (lambda + mu) * C1^2 / 9
+        ) *
+        theta0^2 *
+        g^2
+    t5 =
+        -(
+            (lambda - 2mu) / 18 - (lambda + mu) / 9 * C1 +
+            (lambda + mu) * C1^2 / 18
+        ) *
+        theta0^2 *
+        g^4
+
+    return V0c * (t1 + t2 + t3 + t4 + t5)
+end
+
+function simplified_core_potential(
+    inner_radius,
+    outer_radius,
+    lambda,
+    mu,
+    theta0,
+    V0c,
+)
+    C1 = (lambda - 2mu) / (lambda + 2mu)
+    K = bulk_modulus(lambda, mu)
+    C3 = mu * K / (lambda + 2mu)
+    gamma = inner_radius / outer_radius
+
+    return V0c*(-C3 * theta0 + C3 * theta0 * gamma^2 + C1 * C3 / 6 * theta0^2 -
+    C1 * C3 / 3 * theta0^2 * gamma^2 + C1 * C3 / 6 * theta0^2 * gamma^4)
 end
 
 K = 247.0
@@ -230,7 +264,24 @@ solverpotential =
     solver_core_potential.(inner_radius, outer_radius, lambda, mu, theta0, V0c)
 directpotential =
     direct_core_potential.(inner_radius, outer_radius, lambda, mu, theta0, V0c)
+err = maximum_error(solverpotential, directpotential)
 
-err = maximum_error(solverpotential,directpotential)
+@test err < 10eps()
 
+expandedpotential =
+    expanded_core_potential.(
+        inner_radius,
+        outer_radius,
+        lambda,
+        mu,
+        theta0,
+        V0c,
+    )
+
+err = maximum_error(expandedpotential, solverpotential)
+@test err < 10eps()
+
+simplifiedpotential = simplified_core_potential.(inner_radius,outer_radius,lambda,mu,theta0,V0c)
+
+err = maximum_error(simplifiedpotential,solverpotential)
 @test err < 10eps()

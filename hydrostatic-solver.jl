@@ -121,11 +121,11 @@ function core_strain_energy(solver::CylindricalSolver, V0c)
     return 0.5 * V0c * sum(stress .* strain)
 end
 
-function shell_strain_energy(solver::CylindricalSolver, r)
+function shell_strain_energy(solver::CylindricalSolver, r, V0s)
     stress = shell_stress(solver, r)
     strain = shell_strain(solver, r)
 
-    return 0.5 * sum(stress .* strain)
+    return 0.5 * V0s * sum(stress .* strain)
 end
 
 function core_compression_work(solver::CylindricalSolver, V0)
@@ -140,6 +140,23 @@ function shell_compression_work(solver::CylindricalSolver, r, V0)
     return V * srr
 end
 
+function displacement_coefficients(
+    inner_radius,
+    outer_radius,
+    lambda,
+    mu,
+    theta0,
+)
+    K = bulk_modulus(lambda, mu)
+    C1 = (lambda - 2mu) / (lambda + 2mu)
+    C2 = K / (2 * (lambda + 2mu))
+    g = inner_radius / outer_radius
 
+    A1c = C1 * theta0 / 6 * (g^2 - 1)
+    A1s = C1 * theta0 / 6 * (g^2 + 2 / C1)
+    A2s = -C2 * theta0 * inner_radius^2
+    B = theta0 / 3 * (1 - g^2)
+    return A1c, A1s, A2s, B
+end
 
 end

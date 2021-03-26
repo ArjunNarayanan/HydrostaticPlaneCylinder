@@ -14,3 +14,7 @@ end
 function second_invariant(strain)
     return 0.5*sum(strain.^2)
 end
+
+function maximum_error(u, v)
+    return maximum(abs.(u - v))
+end
